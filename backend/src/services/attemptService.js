@@ -1,4 +1,4 @@
-const { exams, questions, attempts, nextAttemptId } = require('../data/store');
+import { exams, questions, attempts, nextAttemptId } from '../data/store.js';
 
 const REQUIRED_QUESTION_COUNT = 10;
 const CLIENT_ROLES = new Set(['CLIENT', 'STUDENT']);
@@ -99,7 +99,7 @@ function validateAnswer(answer, attemptQuestionIds) {
     throw new AppError(400, 'Answer question IDs must belong to the attempt');
   }
   const question = questions.get(answer.questionId);
-  if (!Number.isInteger(answer.answerIndex) || answer.answerIndex < 0 || answer.answerIndex >= question.options.length) {
+  if (!Number.isInteger((answer.answerIndex ?? answer.answer)) || (answer.answerIndex ?? answer.answer) < 0 || (answer.answerIndex ?? answer.answer) >= question.options.length) {
     throw new AppError(400, 'Answer indexes must match an available option');
   }
 }
@@ -127,7 +127,7 @@ function submitAttempt({ attemptId, user, answers = [], now = new Date() }) {
 
   const attemptQuestionIds = attempt.questionIds;
   answers.forEach((answer) => validateAnswer(answer, attemptQuestionIds));
-  const answerMap = new Map(answers.map((answer) => [answer.questionId, answer.answerIndex]));
+  const answerMap = new Map(answers.map((answer) => [answer.questionId, (answer.answerIndex ?? answer.answer)]));
   const totalQuestions = attemptQuestionIds.length;
   const correctAnswers = attemptQuestionIds.reduce((total, questionId) => {
     const question = questions.get(questionId);
@@ -166,10 +166,4 @@ function getResult({ attemptId, user }) {
   return attempt.result;
 }
 
-module.exports = {
-  AppError,
-  startAttempt,
-  getAttempt,
-  submitAttempt,
-  getResult,
-};
+export { AppError, startAttempt, getAttempt, submitAttempt, getResult };

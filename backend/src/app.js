@@ -1,9 +1,17 @@
-const express = require('express');
-const attemptRoutes = require('./routes/attemptRoutes');
-
-const app = express();
-
+import express from 'express';
+import env from './config/env.js';
+import authRoutes from './routes/authRoutes.js';
+import examRoutes from './routes/examRoutes.js';
+import attemptRoutes from './routes/attemptRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
+import { notFound, errorHandler } from './middleware/errorMiddleware.js';
+const app=express();
+app.use((req,res,next)=>{res.header('Access-Control-Allow-Origin', env.corsOrigin); res.header('Access-Control-Allow-Headers','Origin, X-Requested-With, Content-Type, Accept, Authorization'); res.header('Access-Control-Allow-Methods','GET,POST,PUT,PATCH,DELETE,OPTIONS'); if(req.method==='OPTIONS')return res.sendStatus(204); return next();});
 app.use(express.json());
-app.use(attemptRoutes);
-
-module.exports = app;
+app.get('/health',(req,res)=>res.json({status:'ok'}));
+app.use('/api/auth', authRoutes);
+app.use('/api', examRoutes);
+app.use('/api', attemptRoutes);
+app.use('/api/admin', adminRoutes);
+app.use(notFound); app.use(errorHandler);
+export default app;

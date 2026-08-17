@@ -1,15 +1,14 @@
-const express = require('express');
-const examController = require('../controllers/examController');
-const questionController = require('../controllers/questionController');
-const { requireExaminer } = require('../middleware/auth');
-
-const router = express.Router();
-
-router.post('/exams', requireExaminer, examController.createExam);
-router.put('/exams/:examId', requireExaminer, examController.updateExam);
-router.delete('/exams/:examId', requireExaminer, examController.deleteExam);
-router.post('/exams/:examId/questions', requireExaminer, questionController.createQuestion);
-router.put('/questions/:questionId', requireExaminer, questionController.updateQuestion);
-router.delete('/questions/:questionId', requireExaminer, questionController.deleteQuestion);
-
-module.exports = router;
+import express from 'express';
+import * as examController from '../controllers/examController.js';
+import * as questionController from '../controllers/questionController.js';
+import { authenticate, requireExaminer, requireClient } from '../middleware/authMiddleware.js';
+const router=express.Router();
+router.get('/exams', authenticate, examController.listExams);
+router.get('/exams/:examId', authenticate, examController.getExam);
+router.post('/exams', authenticate, requireExaminer, examController.createExam);
+router.put('/exams/:examId', authenticate, requireExaminer, examController.updateExam);
+router.delete('/exams/:examId', authenticate, requireExaminer, examController.deleteExam);
+router.post('/exams/:examId/questions', authenticate, requireExaminer, questionController.createQuestion);
+router.put('/questions/:questionId', authenticate, requireExaminer, questionController.updateQuestion);
+router.delete('/questions/:questionId', authenticate, requireExaminer, questionController.deleteQuestion);
+export default router;
