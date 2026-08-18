@@ -4,9 +4,9 @@ function sendError(res, error) {
     .status(error.statusCode || 500)
     .json({ error: error.message || "Internal server error" });
 }
-export function startAttempt(req, res) {
+export async function startAttempt(req, res) {
   try {
-    const payload = attemptService.startAttempt({
+    const payload = await attemptService.startAttempt({
       examId: req.params.examId,
       user: req.user,
     });
@@ -22,10 +22,10 @@ export function startAttempt(req, res) {
     sendError(res, e);
   }
 }
-export function getAttempt(req, res) {
+export async function getAttempt(req, res) {
   try {
     res.json(
-      attemptService.getAttempt({
+      await attemptService.getAttempt({
         attemptId: req.params.attemptId,
         user: req.user,
       }),
@@ -34,10 +34,10 @@ export function getAttempt(req, res) {
     sendError(res, e);
   }
 }
-export function submitAttempt(req, res) {
+export async function submitAttempt(req, res) {
   try {
     res.json({
-      result: attemptService.submitAttempt({
+      result: await attemptService.submitAttempt({
         attemptId: req.params.attemptId,
         user: req.user,
         answers: req.body.answers,
@@ -47,10 +47,10 @@ export function submitAttempt(req, res) {
     sendError(res, e);
   }
 }
-export function getResult(req, res) {
+export async function getResult(req, res) {
   try {
     res.json({
-      result: attemptService.getResult({
+      result: await attemptService.getResult({
         attemptId: req.params.attemptId,
         user: req.user,
       }),

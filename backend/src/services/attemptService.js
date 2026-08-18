@@ -1,4 +1,4 @@
-import { exams, questions, attempts, nextAttemptId } from "../data/store.js";
+import * as dataStore from "./dataStore.js";
 
 const REQUIRED_QUESTION_COUNT = 10;
 const CLIENT_ROLES = new Set(["CLIENT", "STUDENT"]);
@@ -35,24 +35,18 @@ function isExamAvailable(exam, now) {
   return true;
 }
 
-function getExamQuestions(examId) {
-  return Array.from(questions.values()).filter(
-    (question) => question.examId === examId,
-  );
-}
-
 function sanitizeQuestion(question) {
   return {
-    id: question.id,
+    id: question._id || question.id,
     text: question.text,
     options: question.options,
   };
 }
 
-function startAttempt({ examId, user, now = new Date() }) {
+async function startAttempt({ examId, user, now = new Date() }) {
   requireClient(user);
 
-  const exam = exams.get(examId);
+  const exam = await dataStore.getExam(examId);
   if (!exam) {
     throw new AppError(404, "Exam not found");
   }
@@ -60,10 +54,7 @@ function startAttempt({ examId, user, now = new Date() }) {
     throw new AppError(400, "Exam is not available");
   }
 
-  const selectedQuestions = getExamQuestions(examId).slice(
-    0,
-    REQUIRED_QUESTION_COUNT,
-  );
+  const selectedQuestions = await dataStore.fetchTenQuestionsForExam(examId);
   if (selectedQuestions.length < REQUIRED_QUESTION_COUNT) {
     throw new AppError(
       400,
@@ -74,68 +65,74 @@ function startAttempt({ examId, user, now = new Date() }) {
   const startedAt = now;
   const durationMinutes = Number(exam.durationMinutes || 0);
   const endsAt = new Date(startedAt.getTime() + durationMinutes * 60 * 1000);
-  const attempt = {
-    id: nextAttemptId(),
-    examId,
+
+  const attempt = await dataStore.createExamAttempt({
+    examId: exam._id || exam.id,
     userId: user.id,
-    questionIds: selectedQuestions.map((question) => question.id),
+    questionIds: selectedQuestions.map((q) => q._id || q.id),
     startedAt: startedAt.toISOString(),
     endsAt: endsAt.toISOString(),
     status: IN_PROGRESS,
     result: null,
-  };
-  attempts.set(attempt.id, attempt);
+  });
 
   return {
-    attempt: { ...attempt },
+    attempt: { ...attempt, id: attempt._id || attempt.id },
     questions: selectedQuestions.map(sanitizeQuestion),
   };
 }
 
-function getAttempt({ attemptId, user }) {
+async function getAttempt({ attemptId, user }) {
   requireClient(user);
-  const attempt = attempts.get(attemptId);
+  const attempt = await dataStore.fetchAttemptById(attemptId);
   if (!attempt) {
     throw new AppError(404, "Attempt not found");
   }
-  if (attempt.userId !== user.id) {
+  if (String(attempt.userId) !== String(user.id)) {
     throw new AppError(403, "Attempt does not belong to the logged-in user");
   }
-  const attemptQuestions = attempt.questionIds.map((questionId) =>
-    sanitizeQuestion(questions.get(questionId)),
+
+  // Fetch the questions for this attempt
+  const questionPromises = attempt.questionIds.map((qId) =>
+    dataStore.getQuestion(qId),
   );
-  return { ...attempt, questions: attemptQuestions };
+  const attemptQuestions = (await Promise.all(questionPromises))
+    .filter(Boolean)
+    .map(sanitizeQuestion);
+
+  return {
+    ...attempt,
+    id: attempt._id || attempt.id,
+    questions: attemptQuestions,
+  };
 }
 
 function validateAnswer(answer, attemptQuestionIds) {
-  if (!answer || !attemptQuestionIds.includes(answer.questionId)) {
+  const qIds = attemptQuestionIds.map(String);
+  if (!answer || !qIds.includes(String(answer.questionId))) {
     throw new AppError(400, "Answer question IDs must belong to the attempt");
-  }
-  const question = questions.get(answer.questionId);
-  if (
-    !Number.isInteger(answer.answerIndex ?? answer.answer) ||
-    (answer.answerIndex ?? answer.answer) < 0 ||
-    (answer.answerIndex ?? answer.answer) >= question.options.length
-  ) {
-    throw new AppError(400, "Answer indexes must match an available option");
   }
 }
 
-function submitAttempt({ attemptId, user, answers = [], now = new Date() }) {
+async function submitAttempt({
+  attemptId,
+  user,
+  answers = [],
+  now = new Date(),
+}) {
   requireClient(user);
-  const attempt = attempts.get(attemptId);
+  const attempt = await dataStore.fetchAttemptById(attemptId);
   if (!attempt) {
     throw new AppError(404, "Attempt not found");
   }
-  if (attempt.userId !== user.id) {
+  if (String(attempt.userId) !== String(user.id)) {
     throw new AppError(403, "Attempt does not belong to the logged-in user");
   }
   if (attempt.status === SUBMITTED) {
     throw new AppError(409, "Attempt has already been submitted");
   }
   if (attempt.status === EXPIRED || now > new Date(attempt.endsAt)) {
-    attempt.status = EXPIRED;
-    attempts.set(attempt.id, attempt);
+    await dataStore.updateAttemptStatus(attemptId, EXPIRED);
     throw new AppError(409, "Attempt deadline has expired");
   }
   if (!Array.isArray(answers)) {
@@ -144,19 +141,31 @@ function submitAttempt({ attemptId, user, answers = [], now = new Date() }) {
 
   const attemptQuestionIds = attempt.questionIds;
   answers.forEach((answer) => validateAnswer(answer, attemptQuestionIds));
+
+  // Save the submitted answers
+  const answerDocs = answers.map((a) => ({
+    questionId: a.questionId,
+    answerIndex: a.answerIndex ?? a.answer,
+  }));
+  await dataStore.saveSubmittedAnswers(attemptId, answerDocs);
+
+  // Calculate score
   const answerMap = new Map(
     answers.map((answer) => [
-      answer.questionId,
+      String(answer.questionId),
       answer.answerIndex ?? answer.answer,
     ]),
   );
+
   const totalQuestions = attemptQuestionIds.length;
-  const correctAnswers = attemptQuestionIds.reduce((total, questionId) => {
-    const question = questions.get(questionId);
-    return (
-      total + (answerMap.get(questionId) === question.correctAnswer ? 1 : 0)
-    );
-  }, 0);
+  let correctAnswers = 0;
+  for (const questionId of attemptQuestionIds) {
+    const question = await dataStore.getQuestion(questionId);
+    if (question && answerMap.get(String(questionId)) === question.correctAnswer) {
+      correctAnswers++;
+    }
+  }
+
   const incorrectAnswers = totalQuestions - correctAnswers;
   const score = correctAnswers;
   const percentage = Number(
@@ -171,19 +180,17 @@ function submitAttempt({ attemptId, user, answers = [], now = new Date() }) {
     submittedAt: now.toISOString(),
   };
 
-  attempt.status = SUBMITTED;
-  attempt.result = result;
-  attempts.set(attempt.id, attempt);
+  await dataStore.saveCalculatedResult(attemptId, result);
   return result;
 }
 
-function getResult({ attemptId, user }) {
+async function getResult({ attemptId, user }) {
   requireClient(user);
-  const attempt = attempts.get(attemptId);
+  const attempt = await dataStore.fetchAttemptById(attemptId);
   if (!attempt) {
     throw new AppError(404, "Attempt not found");
   }
-  if (attempt.userId !== user.id) {
+  if (String(attempt.userId) !== String(user.id)) {
     throw new AppError(403, "Attempt does not belong to the logged-in user");
   }
   if (!attempt.result) {

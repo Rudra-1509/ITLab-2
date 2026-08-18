@@ -1,92 +1,75 @@
-import { exams, questions, nextExamId, nextQuestionId } from "../data/store.js";
+import * as dataStore from "../services/dataStore.js";
 
-function canManageExam(user, exam) {
-  return user?.role === "ADMIN" || exam.createdBy === user?.id;
+export async function canManageExam(user, exam) {
+  return user?.role === "ADMIN" || String(exam.createdBy) === String(user?.id);
 }
 
-export function getQuestion(id) {
-  return questions.get(id) || null;
+export async function getQuestion(id) {
+  return dataStore.getQuestion(id);
 }
 
-export function canManageExamResource(user, examId) {
-  const exam = getExam(examId);
-  return Boolean(exam && canManageExam(user, exam));
+export async function canManageExamResource(user, examId) {
+  const exam = await dataStore.getExam(examId);
+  return Boolean(exam && (await canManageExam(user, exam)));
 }
 
-export function createExam(data) {
-  const id = nextExamId();
-  const exam = {
-    id,
+export async function createExam(data) {
+  return dataStore.createExam({
     title: data.title,
     durationMinutes: data.durationMinutes,
     isAvailable: data.isAvailable ?? true,
     createdBy: data.createdBy,
-    questions: [],
-  };
-  exams.set(id, exam);
-  return exam;
+  });
 }
 
-export function updateExam(id, data) {
-  const exam = exams.get(id);
-  if (!exam) return null;
-  const updated = { ...exam, ...data, id };
-  exams.set(id, updated);
-  return updated;
+export async function updateExam(id, data) {
+  return dataStore.updateExam(id, data);
 }
-export function deleteExam(id) {
-  const exam = exams.get(id);
-  if (!exam) return null;
-  for (const q of exam.questions) questions.delete(q);
-  exams.delete(id);
-  return exam;
+
+export async function deleteExam(id) {
+  return dataStore.deleteExam(id);
 }
-export function createQuestion(examId, data) {
-  const exam = exams.get(examId);
+
+export async function createQuestion(examId, data) {
+  const exam = await dataStore.getExam(examId);
   if (!exam) return null;
-  const id = nextQuestionId();
-  const question = {
-    id,
-    examId,
+  return dataStore.createQuestion(examId, {
     text: data.text,
     options: data.options,
     correctAnswer: data.correctAnswer,
     marks: data.marks ?? 1,
-  };
-  questions.set(id, question);
-  exam.questions.push(id);
-  return question;
+  });
 }
-export function updateQuestion(id, data) {
-  const q = questions.get(id);
-  if (!q) return null;
-  const updated = { ...q, ...data, id, examId: q.examId };
-  questions.set(id, updated);
-  return updated;
+
+export async function updateQuestion(id, data) {
+  return dataStore.updateQuestion(id, data);
 }
-export function deleteQuestion(id) {
-  const q = questions.get(id);
-  if (!q) return null;
-  const exam = exams.get(q.examId);
-  if (exam) exam.questions = exam.questions.filter((qid) => qid !== id);
-  questions.delete(id);
-  return q;
+
+export async function deleteQuestion(id) {
+  return dataStore.deleteQuestion(id);
 }
-export function getExam(id) {
-  return exams.get(id) || null;
+
+export async function getExam(id) {
+  return dataStore.getExam(id);
 }
-export function listExams() {
-  return Array.from(exams.values());
+
+export async function listExams() {
+  return dataStore.listExams();
 }
-export function getQuestionsForExam(examId) {
-  return Array.from(questions.values()).filter((q) => q.examId === examId);
+
+export async function getQuestionsForExam(examId) {
+  return dataStore.getQuestionsForExam(examId);
 }
+
 export function sanitizeQuestion(q) {
-  return { id: q.id, text: q.text, options: q.options };
+  return { id: q._id || q.id, text: q.text, options: q.options };
 }
-export function sanitizeExam(exam) {
+
+export async function sanitizeExam(exam) {
+  const questions = await getQuestionsForExam(exam._id || exam.id);
   return {
     ...exam,
-    questions: getQuestionsForExam(exam.id).map(sanitizeQuestion),
+    id: exam._id || exam.id,
+    questions: questions.map(sanitizeQuestion),
   };
 }

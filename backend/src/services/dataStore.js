@@ -1,68 +1,113 @@
-function notImplemented(operation) {
-  throw new Error(`TODO(DB): ${operation} has not been implemented yet.`);
-}
+import User from "../models/User.js";
+import Exam from "../models/Exam.js";
+import Question from "../models/Question.js";
+import Attempt from "../models/Attempt.js";
+
+// ── User operations ──────────────────────────────────────────────────────────
+
 export async function findUserForLogin(identifier) {
-  void identifier;
-  return notImplemented("find user by username/email for login");
+  return User.findOne({
+    $or: [{ email: identifier }, { username: identifier }],
+    active: true,
+  });
 }
+
 export async function listUsersForAdmin(options = {}) {
-  void options;
-  return notImplemented("list users for admin");
+  return User.find(options).select("-passwordHash").lean();
 }
+
+// ── Exam operations ──────────────────────────────────────────────────────────
+
 export async function createExam(examInput) {
-  void examInput;
-  return notImplemented("create exam");
+  const exam = await Exam.create(examInput);
+  return exam.toObject();
 }
+
 export async function listExams(filters = {}) {
-  void filters;
-  return notImplemented("list exams");
+  return Exam.find(filters).lean();
 }
+
+export async function getExam(examId) {
+  return Exam.findById(examId).lean();
+}
+
 export async function updateExam(examId, examUpdates) {
-  void examId;
-  void examUpdates;
-  return notImplemented("update exam");
+  return Exam.findByIdAndUpdate(examId, examUpdates, { new: true }).lean();
 }
+
 export async function deleteExam(examId) {
-  void examId;
-  return notImplemented("delete exam");
+  const exam = await Exam.findByIdAndDelete(examId).lean();
+  if (exam) {
+    await Question.deleteMany({ examId });
+  }
+  return exam;
 }
+
+// ── Question operations ──────────────────────────────────────────────────────
+
 export async function createQuestion(examId, questionInput) {
-  void examId;
-  void questionInput;
-  return notImplemented("create question");
+  const question = await Question.create({ ...questionInput, examId });
+  return question.toObject();
 }
+
 export async function updateQuestion(questionId, questionUpdates) {
-  void questionId;
-  void questionUpdates;
-  return notImplemented("update question");
+  return Question.findByIdAndUpdate(questionId, questionUpdates, {
+    new: true,
+  }).lean();
 }
+
 export async function deleteQuestion(questionId) {
-  void questionId;
-  return notImplemented("delete question");
+  return Question.findByIdAndDelete(questionId).lean();
 }
+
+export async function getQuestion(questionId) {
+  return Question.findById(questionId).lean();
+}
+
+export async function getQuestionsForExam(examId) {
+  return Question.find({ examId }).lean();
+}
+
 export async function fetchTenQuestionsForExam(examId) {
-  void examId;
-  return notImplemented("fetch exactly 10 questions for an exam");
+  return Question.find({ examId }).limit(10).lean();
 }
+
+// ── Attempt operations ───────────────────────────────────────────────────────
+
 export async function createExamAttempt(attemptInput) {
-  void attemptInput;
-  return notImplemented("create exam attempt");
+  const attempt = await Attempt.create(attemptInput);
+  return attempt.toObject();
 }
+
 export async function fetchAttemptById(attemptId) {
-  void attemptId;
-  return notImplemented("fetch attempt by ID");
+  return Attempt.findById(attemptId).lean();
 }
+
 export async function saveSubmittedAnswers(attemptId, answers) {
-  void attemptId;
-  void answers;
-  return notImplemented("save submitted answers");
+  return Attempt.findByIdAndUpdate(
+    attemptId,
+    { answers },
+    { new: true },
+  ).lean();
 }
+
 export async function saveCalculatedResult(attemptId, resultInput) {
-  void attemptId;
-  void resultInput;
-  return notImplemented("save calculated result");
+  return Attempt.findByIdAndUpdate(
+    attemptId,
+    { result: resultInput, status: "SUBMITTED" },
+    { new: true },
+  ).lean();
 }
+
+export async function updateAttemptStatus(attemptId, status) {
+  return Attempt.findByIdAndUpdate(
+    attemptId,
+    { status },
+    { new: true },
+  ).lean();
+}
+
 export async function fetchResultByAttemptId(attemptId) {
-  void attemptId;
-  return notImplemented("fetch result by attempt ID");
+  const attempt = await Attempt.findById(attemptId).lean();
+  return attempt?.result || null;
 }
